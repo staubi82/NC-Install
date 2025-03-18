@@ -64,13 +64,13 @@ echo "║                                                                 ║"
 echo "╚═════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-show_joke "Willkommen zum Nextcloud-Installer! Schnall dich an, wir bauen dir eine Cloud, die so fluffig ist wie eine Schäfchenwolke!"
+show_joke "Grüß Gott beim Nextcloud-Installer! Gleich bauma dir a Wolke wo vor Fluffigkeit schier ausem Bildschirm plüscht!"
 
 # Systemupdate
 show_progress "Aktualisiere das System... (Keine Sorge, das Internet wird nicht explodieren)"
 apt update && apt upgrade -y || show_error "Konnte das System nicht aktualisieren. Ist dein Internet eingeschlafen?"
 
-show_joke "System aktualisiert! Dein Server fühlt sich jetzt wie nach einem Wellnesstag."
+show_joke "System isch gupdatet! Jetzat fühlt sich dei Server wie nach ana Schwitzkistn mit anschließendem Mostviertel."
 
 # Benötigte Pakete installieren
 show_progress "Installiere benötigte Pakete... (Das ist wie Einkaufen, nur ohne den Einkaufswagen)"
@@ -102,7 +102,7 @@ apt install -y \
     software-properties-common \
     ssl-cert || show_error "Konnte die benötigten Pakete nicht installieren. Vielleicht ist der Paketmanager im Urlaub?"
 
-show_joke "Pakete installiert! Dein Server ist jetzt besser ausgestattet als meine Küche."
+show_joke "Pakete installiert! Jetz hät dei Server mehr Drahtesel wie d'Küch vom Wirt am Eck - und des sag was!"
 
 # PHP-Version ermitteln
 PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
@@ -153,20 +153,77 @@ mysql -e "FLUSH PRIVILEGES;"
 
 show_success "MariaDB konfiguriert! Deine Datenbank ist jetzt so sicher wie ein Tresor... naja, fast."
 
+# Frage nach Installationstyp (lokal oder mit URL)
+show_progress "Konfiguriere Zugriffsmethode..."
+echo -e "${CYAN}"
+echo "Wie möchtest du auf deine Nextcloud zugreifen?"
+echo "1) Lokal über HTTP (einfach, aber nur im lokalen Netzwerk sicher)"
+echo "2) Über eine Domain mit HTTPS (sicherer, benötigt eine Domain)"
+echo -e "${NC}"
+read -p "Wähle eine Option (1 oder 2): " INSTALL_TYPE
+
+# Variablen für die Konfiguration
+USE_HTTPS=false
+DOMAIN=""
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
+if [ "$INSTALL_TYPE" = "2" ]; then
+    USE_HTTPS=true
+    read -p "Gib deine vollständige Domain ein (z.B. cloud.example.com): " DOMAIN
+    show_info "Aktuelle Server-IP: $SERVER_IP"
+    show_info "Bitte stelle sicher, dass deine Domain mit einem DNS A-Record auf diese IP zeigt!"
+    echo -e "Beispiel-DNS-Konfiguration:"
+    echo -e "Name: ${CYAN}$DOMAIN${NC} => Type: ${CYAN}A${NC} => Value: ${CYAN}$SERVER_IP${NC}"
+    echo ""
+    
+    # Prüfe, ob certbot installiert ist, wenn nicht, installiere es
+    if ! command -v certbot &> /dev/null; then
+        show_progress "Installiere Certbot für SSL-Zertifikate..."
+        apt install -y certbot python3-certbot-nginx
+    fi
+    
+    show_info "Domain $DOMAIN wird mit HTTPS konfiguriert"
+else
+    show_info "Lokale Installation über HTTP wird konfiguriert"
+fi
+
 # Nginx konfigurieren
 show_progress "Konfiguriere Nginx... (Webserver sind wie Türsteher, nur höflicher)"
 
-# Server-IP ermitteln
-SERVER_IP=$(hostname -I | awk '{print $1}')
-
 # Nginx Konfiguration erstellen
-cat > /etc/nginx/sites-available/nextcloud << 'EOF'
+if [ "$USE_HTTPS" = true ]; then
+    # HTTPS-Konfiguration mit Domain
+    cat > /etc/nginx/sites-available/nextcloud << EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+    
+    # Weiterleitung zu HTTPS
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    
+    # Setze den Server-Namen auf die Domain
+    server_name $DOMAIN;
+EOF
+else
+    # HTTP-Konfiguration mit IP
+    cat > /etc/nginx/sites-available/nextcloud << 'EOF'
 server {
     listen 80;
     listen [::]:80;
     
-    # Setze den Server-Namen auf die IP-Adresse oder Domain
+    # Setze den Server-Namen auf die IP-Adresse
     server_name _;
+EOF
+fi
+
+# Gemeinsamer Teil der Nginx-Konfiguration
+cat >> /etc/nginx/sites-available/nextcloud << 'EOF'
     
     # Setze den Root-Pfad auf das Nextcloud-Verzeichnis
     root /var/www/nextcloud;
@@ -286,12 +343,25 @@ EOF
 # Ersetze den Socket-Pfad mit der richtigen PHP-Version
 sed -i "s|fastcgi_pass unix:/run/php/php-fpm.sock;|fastcgi_pass unix:/run/php/php$PHP_VERSION-fpm.sock;|" /etc/nginx/sites-available/nextcloud
 
+# Wenn HTTPS verwendet wird, setze HTTPS-Parameter in der Nginx-Konfiguration
+if [ "$USE_HTTPS" = true ]; then
+    # Setze HTTPS-Parameter in der Nginx-Konfiguration
+    sed -i "s|fastcgi_param HTTPS off;|fastcgi_param HTTPS on;|" /etc/nginx/sites-available/nextcloud
+fi
+
 # Aktiviere die Nextcloud-Site
 ln -sf /etc/nginx/sites-available/nextcloud /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 # Nginx-Konfiguration testen
 nginx -t || show_error "Nginx-Konfiguration ist fehlerhaft. Das ist peinlicher als ein Hosenanziehen mit den Beinen in den Ärmeln."
+
+# Wenn HTTPS verwendet wird, SSL-Zertifikat mit Let's Encrypt erstellen
+if [ "$USE_HTTPS" = true ]; then
+    show_progress "Erstelle SSL-Zertifikat mit Let's Encrypt..."
+    certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN || show_error "Konnte kein SSL-Zertifikat erstellen. Ist deine Domain korrekt konfiguriert?"
+    show_success "SSL-Zertifikat wurde erstellt und Nginx wurde konfiguriert!"
+fi
 
 show_success "Nginx konfiguriert! Dein Webserver ist jetzt bereit, die Welt zu erobern... oder zumindest deine Nextcloud zu hosten."
 
@@ -305,7 +375,7 @@ mkdir -p /var/www
 cd /tmp
 wget https://download.nextcloud.com/server/releases/latest.zip || show_error "Konnte Nextcloud nicht herunterladen. Ist das Internet im Urlaub?"
 
-show_joke "Download abgeschlossen! Das ging schneller als erwartet. Das Internet hatte wohl einen guten Tag."
+show_joke "Download fertig! Des isch ganga wie's Brezga backa - blitzgscheid ond ohne dass d'Hemd ärmel nass worra send!"
 
 # Nextcloud entpacken
 show_progress "Entpacke Nextcloud... (Wie ein Geschenk auspacken, nur ohne das Papier)"
@@ -339,10 +409,18 @@ sudo -u www-data php occ config:system:set default_language --value="de"
 sudo -u www-data php occ config:system:set default_locale --value="de_DE"
 
 # Trusted Domains konfigurieren
-sudo -u www-data php occ config:system:set trusted_domains 1 --value="$SERVER_IP"
+if [ "$USE_HTTPS" = true ]; then
+    sudo -u www-data php occ config:system:set trusted_domains 1 --value="$DOMAIN"
+else
+    sudo -u www-data php occ config:system:set trusted_domains 1 --value="$SERVER_IP"
+fi
 
-# HTTP-Protokoll erzwingen (verhindert Weiterleitungsprobleme)
-sudo -u www-data php occ config:system:set overwriteprotocol --value="http"
+# Protokoll konfigurieren
+if [ "$USE_HTTPS" = true ]; then
+    sudo -u www-data php occ config:system:set overwriteprotocol --value="https"
+else
+    sudo -u www-data php occ config:system:set overwriteprotocol --value="http"
+fi
 
 # Dienste neustarten
 show_progress "Starte Dienste neu... (Wie ein kleiner Powernap für deinen Server)"
@@ -350,7 +428,7 @@ systemctl restart php$PHP_VERSION-fpm
 systemctl restart nginx
 systemctl restart mariadb
 
-show_joke "Alles neu gestartet! Dein Server fühlt sich jetzt erfrischt wie nach einer kalten Dusche."
+show_joke "Alles neu gstartet! Jetz schnurrt der Server wieder wie a Kätzle nach em Milchdibbele."
 
 # Abschluss
 show_success "Nextcloud wurde erfolgreich installiert! Juhuuuu! 🎉"
@@ -361,7 +439,11 @@ echo "║                                                                 ║"
 echo "║   Nextcloud Installation abgeschlossen!                         ║"
 echo "║                                                                 ║"
 echo "║   Zugriff auf deine Nextcloud:                                  ║"
-echo "║   http://$SERVER_IP/                                          ║"
+if [ "$USE_HTTPS" = true ]; then
+    echo "║   https://$DOMAIN/                                          ║"
+else
+    echo "║   http://$SERVER_IP/                                          ║"
+fi
 echo "║                                                                 ║"
 echo "║   Admin-Benutzer: admin                                         ║"
 echo "║   Admin-Passwort: admin                                         ║"
@@ -374,8 +456,8 @@ echo "║                                                                 ║"
 echo "╚═════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-show_joke "Deine Cloud ist jetzt einsatzbereit! Zeit für einen Kaffee und ein High-Five! ☕👋"
-show_joke "Vergiss nicht, mir auf GitHub zu folgen, wenn dir das Skript gefallen hat!"
-show_joke "Mit ♥ erstellt von Staubi - Möge deine Cloud niemals regnen!"
+show_joke "Dei Wolke isch fertig! Zeit für a Vesper ond a Viertele vom Feischta! 🥪🍷"
+show_joke "Vergess et, mir uff GitHub z'folga, falls des Skript dir gfalla hat!"
+show_joke "Mit viel Lieb ond Schwoabestarrem gschaffa vom Staubi - Mög dia Wolke emmer schee flockig bleiba!"
 
 exit 0
