@@ -76,7 +76,7 @@ show_joke "System aktualisiert! Dein Server fühlt sich jetzt wie nach einem Wel
 show_progress "Installiere benötigte Pakete... (Das ist wie Einkaufen, nur ohne den Einkaufswagen)"
 apt install -y \
     nginx \
-    mysql-server \
+    mariadb-server \
     php-fpm \
     php-mysql \
     php-common \
@@ -137,8 +137,8 @@ sed -i 's/^opcache.save_comments=.*/opcache.save_comments=1/' $PHP_INI_CONF
 
 show_success "PHP wurde konfiguriert und ist jetzt schneller als ein Gepard mit Raketenantrieb!"
 
-# MySQL konfigurieren
-show_progress "Konfiguriere MySQL... (Datenbanken sind wie Bibliotheken, nur ohne die Stille)"
+# MariaDB konfigurieren
+show_progress "Konfiguriere MariaDB... (Datenbanken sind wie Bibliotheken, nur ohne die Stille)"
 
 # Zufälliges Passwort generieren
 DB_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9')
@@ -151,7 +151,7 @@ mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PA
 mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
 mysql -e "FLUSH PRIVILEGES;"
 
-show_success "MySQL konfiguriert! Deine Datenbank ist jetzt so sicher wie ein Tresor... naja, fast."
+show_success "MariaDB konfiguriert! Deine Datenbank ist jetzt so sicher wie ein Tresor... naja, fast."
 
 # Nginx konfigurieren
 show_progress "Konfiguriere Nginx... (Webserver sind wie Türsteher, nur höflicher)"
@@ -334,7 +334,7 @@ sudo -u www-data php occ config:system:set trusted_domains 1 --value="$SERVER_IP
 show_progress "Starte Dienste neu... (Wie ein kleiner Powernap für deinen Server)"
 systemctl restart php$PHP_VERSION-fpm
 systemctl restart nginx
-systemctl restart mysql
+systemctl restart mariadb
 
 show_joke "Alles neu gestartet! Dein Server fühlt sich jetzt erfrischt wie nach einer kalten Dusche."
 
