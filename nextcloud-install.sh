@@ -246,7 +246,7 @@ server {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_param PATH_INFO $path_info;
-        fastcgi_param HTTPS on;
+        fastcgi_param HTTPS off;
         fastcgi_param modHeadersAvailable true;
         fastcgi_param front_controller_active true;
         fastcgi_pass unix:/run/php/php-fpm.sock;
@@ -329,6 +329,9 @@ sudo -u www-data php occ config:system:set default_locale --value="de_DE"
 
 # Trusted Domains konfigurieren
 sudo -u www-data php occ config:system:set trusted_domains 1 --value="$SERVER_IP"
+
+# HTTP-Protokoll erzwingen (verhindert Weiterleitungsprobleme)
+sudo -u www-data php occ config:system:set overwriteprotocol --value="http"
 
 # Dienste neustarten
 show_progress "Starte Dienste neu... (Wie ein kleiner Powernap für deinen Server)"
