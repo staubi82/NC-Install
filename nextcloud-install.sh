@@ -178,11 +178,20 @@ server {
     charset utf-8;
     
     # Optimiere die Übertragung von statischen Dateien
-    location ~ \.(?:css|js|mjs|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|mp4|webm|avif|woff2?|eot|ttf|otf)$ {
+    location ~ \.(?:css|js|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|mp4|webm|avif|woff2?|eot|ttf|otf)$ {
         try_files $uri /index.php$request_uri;
         expires 6M;
         access_log off;
         add_header Cache-Control "public, immutable";
+    }
+    
+    # JavaScript Module (.mjs) mit korrektem MIME-Typ ausliefern
+    location ~ \.mjs$ {
+        try_files $uri /index.php$request_uri;
+        expires 6M;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+        add_header Content-Type "text/javascript" always;
     }
     
     location = /robots.txt {
@@ -306,8 +315,8 @@ rm latest.zip
 # Berechtigungen setzen
 show_progress "Setze Berechtigungen... (Damit alles schön ordentlich ist)"
 chown -R www-data:www-data /var/www/nextcloud/
-find /var/www/nextcloud/ -type d -exec chmod 750 {} \;
-find /var/www/nextcloud/ -type f -exec chmod 640 {} \;
+find /var/www/nextcloud/ -type d -exec chmod 755 {} \;
+find /var/www/nextcloud/ -type f -exec chmod 644 {} \;
 
 show_success "Nextcloud wurde entpackt und die Berechtigungen wurden gesetzt!"
 
