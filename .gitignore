@@ -1,0 +1,15 @@
+# Betriebssystem-Dateien
+.DS_Store
+Thumbs.db
+
+# Temporäre Dateien
+*.tmp
+*.bak
+*.swp
+*~
+
+# Logs
+*.log
+
+# Persönliche Konfigurationsdateien
+.env
